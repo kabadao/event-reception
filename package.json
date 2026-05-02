@@ -1,0 +1,27 @@
+{
+  "name": "kabutomushi-reception",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "bun run server/index.ts",
+    "dev:all": "concurrently \"bun run server\" \"bun run dev\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "vite": "^7.0.0",
+    "typescript": "^5.8.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}
