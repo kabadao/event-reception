@@ -5,39 +5,45 @@ Bun + Vite + React frontend with a Cloudflare Workers API and D1 database for mu
 ## Local Setup
 
 ```bash
-mise exec -- bun install
-mise exec -- bun run build
+bun install
+bun run build
 cp .dev.vars.example .dev.vars
-mise exec -- bun run d1:migrate:local
-mise exec -- bun run dev:worker
+bun run d1:migrate:local
+bun run dev:worker
 ```
 
 Open the local Wrangler URL and log in with the PIN you set in `.dev.vars`.
 
-## Cloudflare Setup
+## Production Deploy to Cloudflare
+
+Prerequisites:
+
+- Bun installed locally.
+- Cloudflare account.
+- Wrangler logged in with `bunx wrangler login`.
 
 Create the D1 database:
 
 ```bash
-mise exec -- bunx wrangler d1 create kabutomushi-reception
+bunx wrangler d1 create kabutomushi-reception
 ```
 
 Copy the generated `database_id` into `wrangler.toml`, then initialize the schema:
 
 ```bash
-mise exec -- bun run d1:migrate:remote
+bun run d1:migrate:remote
 ```
 
 Set the shared reception PIN as a Cloudflare secret:
 
 ```bash
-mise exec -- bunx wrangler secret put RECEPTION_PIN
+bunx wrangler secret put RECEPTION_PIN
 ```
 
 Deploy:
 
 ```bash
-mise exec -- bun run deploy
+bun run deploy
 ```
 
 ## Environment Variables
