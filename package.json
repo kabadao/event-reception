@@ -5,23 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "bun run server/index.ts",
-    "dev:all": "concurrently \"bun run server\" \"bun run dev\"",
+    "dev:worker": "wrangler dev",
     "build": "vite build",
-    "preview": "vite preview",
+    "deploy": "bun run build && wrangler deploy",
+    "d1:migrate:local": "wrangler d1 execute kabutomushi-reception --local --file=./schema.sql",
+    "d1:migrate:remote": "wrangler d1 execute kabutomushi-reception --remote --file=./schema.sql",
+    "preview": "wrangler dev",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
-    "concurrently": "^9.2.1",
     "vite": "^7.0.0",
     "typescript": "^5.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.0",
+    "@cloudflare/workers-types": "^4.20260502.1",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "wrangler": "^4.87.0"
   }
 }

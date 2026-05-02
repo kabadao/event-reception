@@ -1,0 +1,17 @@
+name = "kabutomushi-reception"
+main = "worker/index.ts"
+compatibility_date = "2026-05-02"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kabutomushi-reception"
+database_id = "replace-with-cloudflare-d1-database-id"
+
+[vars]
+AUTH_COOKIE_NAME = "reception_auth"
+AUTH_COOKIE_MAX_AGE_SECONDS = "604800"

@@ -1,23 +1,51 @@
 # Kabutomushi Reception
 
-Bun + Vite + React based reception register for multiple staff devices.
+Bun + Vite + React frontend with a Cloudflare Workers API and D1 database for multi-device reception.
 
-## Setup
+## Local Setup
 
 ```bash
-cp .env.example .env
 mise exec -- bun install
 mise exec -- bun run build
-mise exec -- bun run server
+cp .dev.vars.example .dev.vars
+mise exec -- bun run d1:migrate:local
+mise exec -- bun run dev:worker
 ```
 
-Set `RECEPTION_PIN` in `.env` before starting the server. Bun loads `.env` automatically.
+Open the local Wrangler URL and log in with the PIN you set in `.dev.vars`.
+
+## Cloudflare Setup
+
+Create the D1 database:
+
+```bash
+mise exec -- bunx wrangler d1 create kabutomushi-reception
+```
+
+Copy the generated `database_id` into `wrangler.toml`, then initialize the schema:
+
+```bash
+mise exec -- bun run d1:migrate:remote
+```
+
+Set the shared reception PIN as a Cloudflare secret:
+
+```bash
+mise exec -- bunx wrangler secret put RECEPTION_PIN
+```
+
+Deploy:
+
+```bash
+mise exec -- bun run deploy
+```
 
 ## Environment Variables
 
-- `RECEPTION_PIN` - required shared login PIN.
-- `PORT` - server port, defaults to `3000`.
-- `DATABASE_PATH` - SQLite file path, defaults to `data/reception.sqlite`.
-- `NODE_ENV` - use `production` for HTTPS deployments.
+- `RECEPTION_PIN` - required shared login PIN. Use a Wrangler secret in production.
 - `AUTH_COOKIE_NAME` - auth cookie name, defaults to `reception_auth`.
 - `AUTH_COOKIE_MAX_AGE_SECONDS` - login duration, defaults to `604800`.
+
+## Notes
+
+Cloudflare Workers serves the built Vite assets from `dist/` and handles `/api/*` routes in `worker/index.ts`. D1 stores transactions; totals are recalculated from non-voided transaction rows.

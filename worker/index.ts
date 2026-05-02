@@ -1,8 +1,5 @@
 import {
-  type CartItems,
-  type ItemKey,
   activeTransactionsForDate,
-  cartAmount,
   createTransaction,
   findByClientRequestId,
   todayJst,
@@ -10,9 +7,7 @@ import {
   updateTransaction,
   voidTransaction
 } from "./db";
-import { config, isProduction } from "./config";
-
-const AUTH_VALUE = await sha256(config.receptionPin);
+import { type CartItems, type Env, type ItemKey, ITEM_KEYS, cartAmount } from "./types";
 
 type ApiError = {
   error: string;
@@ -38,6 +33,17 @@ async function sha256(value: string): Promise<string> {
     .join("");
 }
 
+function cookieName(env: Env): string {
+  return env.AUTH_COOKIE_NAME?.trim() || "reception_auth";
+}
+
+function cookieMaxAge(env: Env): number {
+  const raw = env.AUTH_COOKIE_MAX_AGE_SECONDS?.trim();
+  if (!raw) return 604800;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : 604800;
+}
+
 function readCookie(req: Request, name: string): string | null {
   const cookie = req.headers.get("cookie");
   if (!cookie) return null;
@@ -48,16 +54,16 @@ function readCookie(req: Request, name: string): string | null {
     ?.slice(name.length + 1) ?? null;
 }
 
-function isAuthenticated(req: Request): boolean {
-  return readCookie(req, config.authCookieName) === AUTH_VALUE;
+async function isAuthenticated(req: Request, env: Env): Promise<boolean> {
+  if (!env.RECEPTION_PIN) return false;
+  return readCookie(req, cookieName(env)) === await sha256(env.RECEPTION_PIN);
 }
 
-function withCookie(data: unknown): Response {
+async function withCookie(data: unknown, env: Env): Promise<Response> {
   const response = json(data);
-  const secure = isProduction ? "; Secure" : "";
   response.headers.set(
     "Set-Cookie",
-    `${config.authCookieName}=${AUTH_VALUE}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${config.authCookieMaxAgeSeconds}${secure}`
+    `${cookieName(env)}=${await sha256(env.RECEPTION_PIN)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${cookieMaxAge(env)}; Secure`
   );
   return response;
 }
@@ -70,7 +76,7 @@ function assertItems(value: unknown): CartItems | null {
   if (!value || typeof value !== "object") return null;
   const source = value as Record<string, unknown>;
   const result = {} as CartItems;
-  for (const key of ["adult", "child", "lottery", "free"] as ItemKey[]) {
+  for (const key of ITEM_KEYS as readonly ItemKey[]) {
     const count = Number(source[key]);
     if (!Number.isInteger(count) || count < 0 || count > 999) return null;
     result[key] = count;
@@ -78,8 +84,8 @@ function assertItems(value: unknown): CartItems | null {
   return result;
 }
 
-function buildSummary(date: string) {
-  const rows = activeTransactionsForDate(date);
+async function buildSummary(env: Env, date: string) {
+  const rows = await activeTransactionsForDate(env.DB, date);
   const totals: CartItems = { adult: 0, child: 0, lottery: 0, free: 0 };
   const hourly: Record<string, number> = {};
 
@@ -98,7 +104,7 @@ function buildSummary(date: string) {
     people: totals.adult + totals.child + totals.free,
     totalRevenue: cartAmount(totals),
     hourly,
-    history: transactionsForDate(date, 20)
+    history: await transactionsForDate(env.DB, date, 20)
   };
 }
 
@@ -107,8 +113,8 @@ function csvEscape(value: unknown): string {
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function csvForDate(date: string): Response {
-  const rows = transactionsForDate(date, 10000);
+async function csvForDate(env: Env, date: string): Promise<Response> {
+  const rows = await transactionsForDate(env.DB, date, 10000);
   const header = [
     "id",
     "createdAt",
@@ -147,26 +153,26 @@ function csvForDate(date: string): Response {
   });
 }
 
-async function api(req: Request, url: URL): Promise<Response> {
+async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname === "/api/health") return json({ ok: true });
 
   if (url.pathname === "/api/login" && req.method === "POST") {
     const body = await req.json().catch(() => null) as { pin?: string } | null;
-    if (!body?.pin || await sha256(body.pin) !== AUTH_VALUE) {
+    if (!env.RECEPTION_PIN || !body?.pin || await sha256(body.pin) !== await sha256(env.RECEPTION_PIN)) {
       return error("PINが正しくありません。", 401);
     }
-    return withCookie({ ok: true });
+    return withCookie({ ok: true }, env);
   }
 
-  if (!isAuthenticated(req)) return error("認証が必要です。", 401);
+  if (!await isAuthenticated(req, env)) return error("認証が必要です。", 401);
 
   if (url.pathname === "/api/summary" && req.method === "GET") {
-    return json(buildSummary(parseDate(url)));
+    return json(await buildSummary(env, parseDate(url)));
   }
 
   if (url.pathname === "/api/transactions" && req.method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
-    return json({ transactions: transactionsForDate(parseDate(url), limit) });
+    return json({ transactions: await transactionsForDate(env.DB, parseDate(url), limit) });
   }
 
   if (url.pathname === "/api/transactions" && req.method === "POST") {
@@ -180,10 +186,10 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (!items) return error("商品数量が不正です。");
     if (Object.values(items).every((count) => count === 0)) return error("空の会計は登録できません。");
 
-    const existing = findByClientRequestId(body.clientRequestId);
+    const existing = await findByClientRequestId(env.DB, body.clientRequestId);
     if (existing) return json({ transaction: existing, duplicate: true });
 
-    const transaction = createTransaction({
+    const transaction = await createTransaction(env.DB, {
       clientRequestId: body.clientRequestId,
       terminalId: body.terminalId.trim().slice(0, 40) || "受付",
       items
@@ -193,7 +199,7 @@ async function api(req: Request, url: URL): Promise<Response> {
 
   const voidMatch = url.pathname.match(/^\/api\/transactions\/([^/]+)\/void$/);
   if (voidMatch && req.method === "POST") {
-    if (!voidTransaction(voidMatch[1])) return error("取消対象が見つかりません。", 404);
+    if (!await voidTransaction(env.DB, voidMatch[1])) return error("取消対象が見つかりません。", 404);
     return json({ ok: true });
   }
 
@@ -205,34 +211,22 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (Object.values(items).every((count) => count === 0)) {
       return error("空の会計には編集できません。取消を使ってください。");
     }
-    const transaction = updateTransaction(updateMatch[1], items);
+    const transaction = await updateTransaction(env.DB, updateMatch[1], items);
     if (!transaction) return error("編集対象が見つからないか、取消済みです。", 404);
     return json({ transaction });
   }
 
   if (url.pathname === "/api/export.csv" && req.method === "GET") {
-    return csvForDate(parseDate(url));
+    return csvForDate(env, parseDate(url));
   }
 
   return error("APIが見つかりません。", 404);
 }
 
-async function staticFile(url: URL): Promise<Response> {
-  const path = url.pathname === "/" ? "/index.html" : url.pathname;
-  const file = Bun.file(`dist${path}`);
-  if (await file.exists()) return new Response(file);
-  const fallback = Bun.file("dist/index.html");
-  if (await fallback.exists()) return new Response(fallback, { headers: { "Content-Type": "text/html" } });
-  return error("dist が見つかりません。先に bun run build を実行してください。", 404);
-}
-
-Bun.serve({
-  port: config.port,
-  async fetch(req) {
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname.startsWith("/api/")) return api(req, url);
-    return staticFile(url);
+    if (url.pathname.startsWith("/api/")) return api(req, env, url);
+    return env.ASSETS.fetch(req);
   }
-});
-
-console.log(`Reception server listening on http://localhost:${config.port}`);
+};
