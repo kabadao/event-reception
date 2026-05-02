@@ -10,7 +10,7 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "kabutomushi-reception"
-database_id = "replace-with-cloudflare-d1-database-id"
+database_id = "25abceef-bf4c-4c19-bb9f-8428f215e975"
 
 [vars]
 AUTH_COOKIE_NAME = "reception_auth"

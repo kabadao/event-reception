@@ -28,7 +28,27 @@ Create the D1 database:
 bunx wrangler d1 create kabutomushi-reception
 ```
 
-Copy the generated `database_id` into `wrangler.toml`, then initialize the schema:
+Copy the generated `database_id` into `wrangler.toml`.
+
+If you missed the output, list your D1 databases:
+
+```bash
+bunx wrangler d1 list
+```
+
+Then replace this placeholder in `wrangler.toml`:
+
+```toml
+database_id = "replace-with-cloudflare-d1-database-id"
+```
+
+with the real UUID:
+
+```toml
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+Initialize the schema:
 
 ```bash
 bun run d1:migrate:remote
